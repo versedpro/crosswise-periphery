@@ -4,8 +4,8 @@ import { deployContract } from 'ethereum-waffle'
 
 import { expandTo18Decimals } from './utilities'
 
-import PancakeFactory from '@uniswap/v2-core/build/PancakeFactory.json'
-import IPancakePair from '@uniswap/v2-core/build/IPancakePair.json'
+import PancakeFactory from '../../build/IFoxchainFactory.json'
+import IPancakePair from '../../build/IFoxchainPair.json'
 
 import ERC20 from '../../build/ERC20.json'
 import WETH9 from '../../build/WETH9.json'
@@ -13,7 +13,7 @@ import UniswapV1Exchange from '../../build/UniswapV1Exchange.json'
 import UniswapV1Factory from '../../build/UniswapV1Factory.json'
 import PancakeRouter01 from '../../build/PancakeRouter01.json'
 import PancakeMigrator from '../../build/PancakeMigrator.json'
-import PancakeRouter02 from '../../build/PancakeRouter02.json'
+import PancakeRouter02 from '../../build/FoxchainRouter.json'
 import RouterEventEmitter from '../../build/RouterEventEmitter.json'
 
 const overrides = {
