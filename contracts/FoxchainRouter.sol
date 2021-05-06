@@ -9,7 +9,7 @@ import './libraries/SafeMath.sol';
 import './interfaces/IERC20.sol';
 import './interfaces/IWETH.sol';
 
-contract PancakeRouter is IPancakeRouter02 {
+contract FoxchainRouter is IPancakeRouter02 {
     using SafeMath for uint;
 
     address public immutable override factory;
