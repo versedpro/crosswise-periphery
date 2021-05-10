@@ -1,29 +1,29 @@
 pragma solidity =0.6.6;
 
-import './interfaces/IFoxchainFactory.sol';
+import './interfaces/ICrosswiseFactory.sol';
 import '@uniswap/lib/contracts/libraries/TransferHelper.sol';
 
-import './libraries/PancakeLibrary.sol';
-import './interfaces/IPancakeRouter01.sol';
-import './interfaces/IERC20.sol';
-import './interfaces/IWETH.sol';
+import './libraries/CrosswiseLibrary.sol';
+import './interfaces/ICrosswiseRouter01.sol';
+import './interfaces/IBEP20.sol';
+import './interfaces/IWBNB.sol';
 
-contract PancakeRouter01 is IPancakeRouter01 {
+contract CrosswiseRouter01 is ICrosswiseRouter01 {
     address public immutable override factory;
-    address public immutable override WETH;
+    address public immutable override WBNB;
 
     modifier ensure(uint deadline) {
-        require(deadline >= block.timestamp, 'PancakeRouter: EXPIRED');
+        require(deadline >= block.timestamp, 'CrosswiseRouter: EXPIRED');
         _;
     }
 
-    constructor(address _factory, address _WETH) public {
+    constructor(address _factory, address _WBNB) public {
         factory = _factory;
-        WETH = _WETH;
+        WBNB = _WBNB;
     }
 
     receive() external payable {
-        assert(msg.sender == WETH); // only accept ETH via fallback from the WETH contract
+        assert(msg.sender == WBNB); // only accept ETH via fallback from the WBNB contract
     }
 
     // **** ADD LIQUIDITY ****
@@ -36,21 +36,21 @@ contract PancakeRouter01 is IPancakeRouter01 {
         uint amountBMin
     ) private returns (uint amountA, uint amountB) {
         // create the pair if it doesn't exist yet
-        if (IFoxchainFactory(factory).getPair(tokenA, tokenB) == address(0)) {
-            IFoxchainFactory(factory).createPair(tokenA, tokenB);
+        if (ICrosswiseFactory(factory).getPair(tokenA, tokenB) == address(0)) {
+            ICrosswiseFactory(factory).createPair(tokenA, tokenB);
         }
-        (uint reserveA, uint reserveB) = PancakeLibrary.getReserves(factory, tokenA, tokenB);
+        (uint reserveA, uint reserveB) = CrosswiseLibrary.getReserves(factory, tokenA, tokenB);
         if (reserveA == 0 && reserveB == 0) {
             (amountA, amountB) = (amountADesired, amountBDesired);
         } else {
-            uint amountBOptimal = PancakeLibrary.quote(amountADesired, reserveA, reserveB);
+            uint amountBOptimal = CrosswiseLibrary.quote(amountADesired, reserveA, reserveB);
             if (amountBOptimal <= amountBDesired) {
-                require(amountBOptimal >= amountBMin, 'PancakeRouter: INSUFFICIENT_B_AMOUNT');
+                require(amountBOptimal >= amountBMin, 'CrosswiseRouter: INSUFFICIENT_B_AMOUNT');
                 (amountA, amountB) = (amountADesired, amountBOptimal);
             } else {
-                uint amountAOptimal = PancakeLibrary.quote(amountBDesired, reserveB, reserveA);
+                uint amountAOptimal = CrosswiseLibrary.quote(amountBDesired, reserveB, reserveA);
                 assert(amountAOptimal <= amountADesired);
-                require(amountAOptimal >= amountAMin, 'PancakeRouter: INSUFFICIENT_A_AMOUNT');
+                require(amountAOptimal >= amountAMin, 'CrosswiseRouter: INSUFFICIENT_A_AMOUNT');
                 (amountA, amountB) = (amountAOptimal, amountBDesired);
             }
         }
@@ -66,10 +66,10 @@ contract PancakeRouter01 is IPancakeRouter01 {
         uint deadline
     ) external override ensure(deadline) returns (uint amountA, uint amountB, uint liquidity) {
         (amountA, amountB) = _addLiquidity(tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin);
-        address pair = PancakeLibrary.pairFor(factory, tokenA, tokenB);
+        address pair = CrosswiseLibrary.pairFor(factory, tokenA, tokenB);
         TransferHelper.safeTransferFrom(tokenA, msg.sender, pair, amountA);
         TransferHelper.safeTransferFrom(tokenB, msg.sender, pair, amountB);
-        liquidity = IFoxchainPair(pair).mint(to);
+        liquidity = ICrosswisePair(pair).mint(to);
     }
     function addLiquidityETH(
         address token,
@@ -81,17 +81,17 @@ contract PancakeRouter01 is IPancakeRouter01 {
     ) external override payable ensure(deadline) returns (uint amountToken, uint amountETH, uint liquidity) {
         (amountToken, amountETH) = _addLiquidity(
             token,
-            WETH,
+            WBNB,
             amountTokenDesired,
             msg.value,
             amountTokenMin,
             amountETHMin
         );
-        address pair = PancakeLibrary.pairFor(factory, token, WETH);
+        address pair = CrosswiseLibrary.pairFor(factory, token, WBNB);
         TransferHelper.safeTransferFrom(token, msg.sender, pair, amountToken);
-        IWETH(WETH).deposit{value: amountETH}();
-        assert(IWETH(WETH).transfer(pair, amountETH));
-        liquidity = IFoxchainPair(pair).mint(to);
+        IWBNB(WBNB).deposit{value: amountETH}();
+        assert(IWBNB(WBNB).transfer(pair, amountETH));
+        liquidity = ICrosswisePair(pair).mint(to);
         if (msg.value > amountETH) TransferHelper.safeTransferETH(msg.sender, msg.value - amountETH); // refund dust eth, if any
     }
 
@@ -105,13 +105,13 @@ contract PancakeRouter01 is IPancakeRouter01 {
         address to,
         uint deadline
     ) public override ensure(deadline) returns (uint amountA, uint amountB) {
-        address pair = PancakeLibrary.pairFor(factory, tokenA, tokenB);
-        IFoxchainPair(pair).transferFrom(msg.sender, pair, liquidity); // send liquidity to pair
-        (uint amount0, uint amount1) = IFoxchainPair(pair).burn(to);
-        (address token0,) = PancakeLibrary.sortTokens(tokenA, tokenB);
+        address pair = CrosswiseLibrary.pairFor(factory, tokenA, tokenB);
+        ICrosswisePair(pair).transferFrom(msg.sender, pair, liquidity); // send liquidity to pair
+        (uint amount0, uint amount1) = ICrosswisePair(pair).burn(to);
+        (address token0,) = CrosswiseLibrary.sortTokens(tokenA, tokenB);
         (amountA, amountB) = tokenA == token0 ? (amount0, amount1) : (amount1, amount0);
-        require(amountA >= amountAMin, 'PancakeRouter: INSUFFICIENT_A_AMOUNT');
-        require(amountB >= amountBMin, 'PancakeRouter: INSUFFICIENT_B_AMOUNT');
+        require(amountA >= amountAMin, 'CrosswiseRouter: INSUFFICIENT_A_AMOUNT');
+        require(amountB >= amountBMin, 'CrosswiseRouter: INSUFFICIENT_B_AMOUNT');
     }
     function removeLiquidityETH(
         address token,
@@ -123,7 +123,7 @@ contract PancakeRouter01 is IPancakeRouter01 {
     ) public override ensure(deadline) returns (uint amountToken, uint amountETH) {
         (amountToken, amountETH) = removeLiquidity(
             token,
-            WETH,
+            WBNB,
             liquidity,
             amountTokenMin,
             amountETHMin,
@@ -131,7 +131,7 @@ contract PancakeRouter01 is IPancakeRouter01 {
             deadline
         );
         TransferHelper.safeTransfer(token, to, amountToken);
-        IWETH(WETH).withdraw(amountETH);
+        IWBNB(WBNB).withdraw(amountETH);
         TransferHelper.safeTransferETH(to, amountETH);
     }
     function removeLiquidityWithPermit(
@@ -144,9 +144,9 @@ contract PancakeRouter01 is IPancakeRouter01 {
         uint deadline,
         bool approveMax, uint8 v, bytes32 r, bytes32 s
     ) external override returns (uint amountA, uint amountB) {
-        address pair = PancakeLibrary.pairFor(factory, tokenA, tokenB);
+        address pair = CrosswiseLibrary.pairFor(factory, tokenA, tokenB);
         uint value = approveMax ? uint(-1) : liquidity;
-        IFoxchainPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
+        ICrosswisePair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
         (amountA, amountB) = removeLiquidity(tokenA, tokenB, liquidity, amountAMin, amountBMin, to, deadline);
     }
     function removeLiquidityETHWithPermit(
@@ -158,9 +158,9 @@ contract PancakeRouter01 is IPancakeRouter01 {
         uint deadline,
         bool approveMax, uint8 v, bytes32 r, bytes32 s
     ) external override returns (uint amountToken, uint amountETH) {
-        address pair = PancakeLibrary.pairFor(factory, token, WETH);
+        address pair = CrosswiseLibrary.pairFor(factory, token, WBNB);
         uint value = approveMax ? uint(-1) : liquidity;
-        IFoxchainPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
+        ICrosswisePair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
         (amountToken, amountETH) = removeLiquidityETH(token, liquidity, amountTokenMin, amountETHMin, to, deadline);
     }
 
@@ -169,11 +169,11 @@ contract PancakeRouter01 is IPancakeRouter01 {
     function _swap(uint[] memory amounts, address[] memory path, address _to) private {
         for (uint i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
-            (address token0,) = PancakeLibrary.sortTokens(input, output);
+            (address token0,) = CrosswiseLibrary.sortTokens(input, output);
             uint amountOut = amounts[i + 1];
             (uint amount0Out, uint amount1Out) = input == token0 ? (uint(0), amountOut) : (amountOut, uint(0));
-            address to = i < path.length - 2 ? PancakeLibrary.pairFor(factory, output, path[i + 2]) : _to;
-            IFoxchainPair(PancakeLibrary.pairFor(factory, input, output)).swap(amount0Out, amount1Out, to, new bytes(0));
+            address to = i < path.length - 2 ? CrosswiseLibrary.pairFor(factory, output, path[i + 2]) : _to;
+            ICrosswisePair(CrosswiseLibrary.pairFor(factory, input, output)).swap(amount0Out, amount1Out, to, new bytes(0));
         }
     }
     function swapExactTokensForTokens(
@@ -183,9 +183,9 @@ contract PancakeRouter01 is IPancakeRouter01 {
         address to,
         uint deadline
     ) external override ensure(deadline) returns (uint[] memory amounts) {
-        amounts = PancakeLibrary.getAmountsOut(factory, amountIn, path);
-        require(amounts[amounts.length - 1] >= amountOutMin, 'PancakeRouter: INSUFFICIENT_OUTPUT_AMOUNT');
-        TransferHelper.safeTransferFrom(path[0], msg.sender, PancakeLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
+        amounts = CrosswiseLibrary.getAmountsOut(factory, amountIn, path);
+        require(amounts[amounts.length - 1] >= amountOutMin, 'CrosswiseRouter: INSUFFICIENT_OUTPUT_AMOUNT');
+        TransferHelper.safeTransferFrom(path[0], msg.sender, CrosswiseLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, to);
     }
     function swapTokensForExactTokens(
@@ -195,9 +195,9 @@ contract PancakeRouter01 is IPancakeRouter01 {
         address to,
         uint deadline
     ) external override ensure(deadline) returns (uint[] memory amounts) {
-        amounts = PancakeLibrary.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= amountInMax, 'PancakeRouter: EXCESSIVE_INPUT_AMOUNT');
-        TransferHelper.safeTransferFrom(path[0], msg.sender, PancakeLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
+        amounts = CrosswiseLibrary.getAmountsIn(factory, amountOut, path);
+        require(amounts[0] <= amountInMax, 'CrosswiseRouter: EXCESSIVE_INPUT_AMOUNT');
+        TransferHelper.safeTransferFrom(path[0], msg.sender, CrosswiseLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, to);
     }
     function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)
@@ -207,11 +207,11 @@ contract PancakeRouter01 is IPancakeRouter01 {
         ensure(deadline)
         returns (uint[] memory amounts)
     {
-        require(path[0] == WETH, 'PancakeRouter: INVALID_PATH');
-        amounts = PancakeLibrary.getAmountsOut(factory, msg.value, path);
-        require(amounts[amounts.length - 1] >= amountOutMin, 'PancakeRouter: INSUFFICIENT_OUTPUT_AMOUNT');
-        IWETH(WETH).deposit{value: amounts[0]}();
-        assert(IWETH(WETH).transfer(PancakeLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
+        require(path[0] == WBNB, 'CrosswiseRouter: INVALID_PATH');
+        amounts = CrosswiseLibrary.getAmountsOut(factory, msg.value, path);
+        require(amounts[amounts.length - 1] >= amountOutMin, 'CrosswiseRouter: INSUFFICIENT_OUTPUT_AMOUNT');
+        IWBNB(WBNB).deposit{value: amounts[0]}();
+        assert(IWBNB(WBNB).transfer(CrosswiseLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
         _swap(amounts, path, to);
     }
     function swapTokensForExactETH(uint amountOut, uint amountInMax, address[] calldata path, address to, uint deadline)
@@ -220,12 +220,12 @@ contract PancakeRouter01 is IPancakeRouter01 {
         ensure(deadline)
         returns (uint[] memory amounts)
     {
-        require(path[path.length - 1] == WETH, 'PancakeRouter: INVALID_PATH');
-        amounts = PancakeLibrary.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= amountInMax, 'PancakeRouter: EXCESSIVE_INPUT_AMOUNT');
-        TransferHelper.safeTransferFrom(path[0], msg.sender, PancakeLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
+        require(path[path.length - 1] == WBNB, 'CrosswiseRouter: INVALID_PATH');
+        amounts = CrosswiseLibrary.getAmountsIn(factory, amountOut, path);
+        require(amounts[0] <= amountInMax, 'CrosswiseRouter: EXCESSIVE_INPUT_AMOUNT');
+        TransferHelper.safeTransferFrom(path[0], msg.sender, CrosswiseLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, address(this));
-        IWETH(WETH).withdraw(amounts[amounts.length - 1]);
+        IWBNB(WBNB).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
     }
     function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
@@ -234,12 +234,12 @@ contract PancakeRouter01 is IPancakeRouter01 {
         ensure(deadline)
         returns (uint[] memory amounts)
     {
-        require(path[path.length - 1] == WETH, 'PancakeRouter: INVALID_PATH');
-        amounts = PancakeLibrary.getAmountsOut(factory, amountIn, path);
-        require(amounts[amounts.length - 1] >= amountOutMin, 'PancakeRouter: INSUFFICIENT_OUTPUT_AMOUNT');
-        TransferHelper.safeTransferFrom(path[0], msg.sender, PancakeLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
+        require(path[path.length - 1] == WBNB, 'CrosswiseRouter: INVALID_PATH');
+        amounts = CrosswiseLibrary.getAmountsOut(factory, amountIn, path);
+        require(amounts[amounts.length - 1] >= amountOutMin, 'CrosswiseRouter: INSUFFICIENT_OUTPUT_AMOUNT');
+        TransferHelper.safeTransferFrom(path[0], msg.sender, CrosswiseLibrary.pairFor(factory, path[0], path[1]), amounts[0]);
         _swap(amounts, path, address(this));
-        IWETH(WETH).withdraw(amounts[amounts.length - 1]);
+        IWBNB(WBNB).withdraw(amounts[amounts.length - 1]);
         TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
     }
     function swapETHForExactTokens(uint amountOut, address[] calldata path, address to, uint deadline)
@@ -249,32 +249,32 @@ contract PancakeRouter01 is IPancakeRouter01 {
         ensure(deadline)
         returns (uint[] memory amounts)
     {
-        require(path[0] == WETH, 'PancakeRouter: INVALID_PATH');
-        amounts = PancakeLibrary.getAmountsIn(factory, amountOut, path);
-        require(amounts[0] <= msg.value, 'PancakeRouter: EXCESSIVE_INPUT_AMOUNT');
-        IWETH(WETH).deposit{value: amounts[0]}();
-        assert(IWETH(WETH).transfer(PancakeLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
+        require(path[0] == WBNB, 'CrosswiseRouter: INVALID_PATH');
+        amounts = CrosswiseLibrary.getAmountsIn(factory, amountOut, path);
+        require(amounts[0] <= msg.value, 'CrosswiseRouter: EXCESSIVE_INPUT_AMOUNT');
+        IWBNB(WBNB).deposit{value: amounts[0]}();
+        assert(IWBNB(WBNB).transfer(CrosswiseLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
         _swap(amounts, path, to);
         if (msg.value > amounts[0]) TransferHelper.safeTransferETH(msg.sender, msg.value - amounts[0]); // refund dust eth, if any
     }
 
     function quote(uint amountA, uint reserveA, uint reserveB) public pure override returns (uint amountB) {
-        return PancakeLibrary.quote(amountA, reserveA, reserveB);
+        return CrosswiseLibrary.quote(amountA, reserveA, reserveB);
     }
 
     function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) public pure override returns (uint amountOut) {
-        return PancakeLibrary.getAmountOut(amountIn, reserveIn, reserveOut);
+        return CrosswiseLibrary.getAmountOut(amountIn, reserveIn, reserveOut);
     }
 
     function getAmountIn(uint amountOut, uint reserveIn, uint reserveOut) public pure override returns (uint amountIn) {
-        return PancakeLibrary.getAmountOut(amountOut, reserveIn, reserveOut);
+        return CrosswiseLibrary.getAmountOut(amountOut, reserveIn, reserveOut);
     }
 
     function getAmountsOut(uint amountIn, address[] memory path) public view override returns (uint[] memory amounts) {
-        return PancakeLibrary.getAmountsOut(factory, amountIn, path);
+        return CrosswiseLibrary.getAmountsOut(factory, amountIn, path);
     }
 
     function getAmountsIn(uint amountOut, address[] memory path) public view override returns (uint[] memory amounts) {
-        return PancakeLibrary.getAmountsIn(factory, amountOut, path);
+        return CrosswiseLibrary.getAmountsIn(factory, amountOut, path);
     }
 }
