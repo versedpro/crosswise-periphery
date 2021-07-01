@@ -16,11 +16,20 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     address public immutable override factory;
     address public immutable override WBNB;
 
+    uint256 public maxTransferAmountRate = 50;
+
     modifier ensure(uint deadline) {
         require(deadline >= block.timestamp, 'CrosswiseRouter: EXPIRED');
         _;
     }
 
+    modifier antiWhale(address[] calldata path, uint256 amountIn) {
+        ICrosswisePair pair = ICrosswisePair(CrosswiseLibrary.pairFor(factory, path[0], path[1]));
+        (uint reserve0, uint reserve1,) = pair.getReserves();
+        uint256 maxTransferAmount = reserve0.mul(maxTransferAmountRate).div(10000);
+        require(amountIn <= maxTransferAmount, "CrssRouter.antiWhale: Transfer amount exceeds the maxTransferAmount");
+        _;
+    }
     constructor(address _factory, address _WBNB) public {
         factory = _factory;
         WBNB = _WBNB;
@@ -228,7 +237,8 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         address[] calldata path,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
+    ) external virtual override ensure(deadline) antiWhale(path, amountIn) returns (uint[] memory amounts) {
+        
         amounts = CrosswiseLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'CrosswiseRouter: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -242,7 +252,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         address[] calldata path,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
+    ) external virtual override ensure(deadline) antiWhale(path, amountOut) returns (uint[] memory amounts) {
         amounts = CrosswiseLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, 'CrosswiseRouter: EXCESSIVE_INPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -256,6 +266,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         override
         payable
         ensure(deadline)
+        antiWhale(path, msg.value)
         returns (uint[] memory amounts)
     {
         require(path[0] == WBNB, 'CrosswiseRouter: INVALID_PATH');
@@ -270,6 +281,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         virtual
         override
         ensure(deadline)
+        antiWhale(path, amountOut)
         returns (uint[] memory amounts)
     {
         require(path[path.length - 1] == WBNB, 'CrosswiseRouter: INVALID_PATH');
@@ -287,6 +299,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         virtual
         override
         ensure(deadline)
+        antiWhale(path, amountOut)
         returns (uint[] memory amounts)
     {
         require(path[path.length - 1] == WBNB, 'CrosswiseRouter: INVALID_PATH');
@@ -305,6 +318,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         override
         payable
         ensure(deadline)
+        antiWhale(path, msg.value)
         returns (uint[] memory amounts)
     {
         require(path[0] == WBNB, 'CrosswiseRouter: INVALID_PATH');
@@ -343,7 +357,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         address[] calldata path,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) {
+    ) external virtual override ensure(deadline) antiWhale(path, amountIn) {
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, CrosswiseLibrary.pairFor(factory, path[0], path[1]), amountIn
         );
@@ -365,6 +379,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         override
         payable
         ensure(deadline)
+        antiWhale(path, amountIn)
     {
         require(path[0] == WBNB, 'CrosswiseRouter: INVALID_PATH');
         uint amountIn = msg.value;
@@ -388,6 +403,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         virtual
         override
         ensure(deadline)
+        antiWhale(path, amountIn)
     {
         require(path[path.length - 1] == WBNB, 'CrosswiseRouter: INVALID_PATH');
         TransferHelper.safeTransferFrom(
