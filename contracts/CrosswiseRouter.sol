@@ -13,22 +13,31 @@ import './interfaces/IWBNB.sol';
 contract CrosswiseRouter is ICrosswiseRouter02 {
     using SafeMath for uint;
 
+    event SetAntiWhale(address indexed lp, bool status);
+
     address public immutable override factory;
     address public immutable override WBNB;
 
-    uint256 public maxTransferAmountRate = 50;
+    uint public maxTransferAmountRate = 50;
+    uint public maxShare = 10000;
+
+    mapping(address => bool) private antiWhalePerLp;
+    mapping(address => address) public lpCreators;
 
     modifier ensure(uint deadline) {
         require(deadline >= block.timestamp, 'CrosswiseRouter: EXPIRED');
         _;
     }
 
-    modifier antiWhale(address[] calldata path, uint256 amountIn) {
+    function antiWhale(address[] memory path, uint amountIn) internal {
+        
         ICrosswisePair pair = ICrosswisePair(CrosswiseLibrary.pairFor(factory, path[0], path[1]));
-        (uint reserve0, uint reserve1,) = pair.getReserves();
-        uint256 maxTransferAmount = reserve0.mul(maxTransferAmountRate).div(10000);
-        require(amountIn <= maxTransferAmount, "CrssRouter.antiWhale: Transfer amount exceeds the maxTransferAmount");
-        _;
+
+        if (antiWhalePerLp[address(pair)]) {
+            (uint reserve0, uint reserve1,) = pair.getReserves();
+            uint maxTransferAmount = (reserve0 * maxTransferAmountRate) / maxShare;
+            require(amountIn <= maxTransferAmount, "CrssRouter.antiWhale: Transfer amount exceeds the maxTransferAmount");
+        }
     }
     constructor(address _factory, address _WBNB) public {
         factory = _factory;
@@ -40,7 +49,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     }
 
     // **** ADD LIQUIDITY ****
-    function _addLiquidity(
+    function _addLiquidity( 
         address tokenA,
         address tokenB,
         uint amountADesired,
@@ -54,6 +63,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         }
         (uint reserveA, uint reserveB) = CrosswiseLibrary.getReserves(factory, tokenA, tokenB);
         if (reserveA == 0 && reserveB == 0) {
+            lpCreators[ICrosswiseFactory(factory).getPair(tokenA, tokenB)] = msg.sender;
             (amountA, amountB) = (amountADesired, amountBDesired);
         } else {
             uint amountBOptimal = CrosswiseLibrary.quote(amountADesired, reserveA, reserveB);
@@ -237,8 +247,8 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         address[] calldata path,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) antiWhale(path, amountIn) returns (uint[] memory amounts) {
-        
+    ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
+        antiWhale(path, amountIn);
         amounts = CrosswiseLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'CrosswiseRouter: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -252,7 +262,8 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         address[] calldata path,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) antiWhale(path, amountOut) returns (uint[] memory amounts) {
+    ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
+        antiWhale(path, amountOut);
         amounts = CrosswiseLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, 'CrosswiseRouter: EXCESSIVE_INPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -266,10 +277,10 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         override
         payable
         ensure(deadline)
-        antiWhale(path, msg.value)
         returns (uint[] memory amounts)
     {
         require(path[0] == WBNB, 'CrosswiseRouter: INVALID_PATH');
+        antiWhale(path, msg.value);
         amounts = CrosswiseLibrary.getAmountsOut(factory, msg.value, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'CrosswiseRouter: INSUFFICIENT_OUTPUT_AMOUNT');
         IWBNB(WBNB).deposit{value: amounts[0]}();
@@ -281,10 +292,10 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         virtual
         override
         ensure(deadline)
-        antiWhale(path, amountOut)
         returns (uint[] memory amounts)
     {
         require(path[path.length - 1] == WBNB, 'CrosswiseRouter: INVALID_PATH');
+        antiWhale(path, amountOut);
         amounts = CrosswiseLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, 'CrosswiseRouter: EXCESSIVE_INPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -299,10 +310,10 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         virtual
         override
         ensure(deadline)
-        antiWhale(path, amountOut)
         returns (uint[] memory amounts)
     {
         require(path[path.length - 1] == WBNB, 'CrosswiseRouter: INVALID_PATH');
+        antiWhale(path, amountIn);
         amounts = CrosswiseLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'CrosswiseRouter: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -318,10 +329,10 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         override
         payable
         ensure(deadline)
-        antiWhale(path, msg.value)
         returns (uint[] memory amounts)
     {
         require(path[0] == WBNB, 'CrosswiseRouter: INVALID_PATH');
+        antiWhale(path, msg.value);
         amounts = CrosswiseLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= msg.value, 'CrosswiseRouter: EXCESSIVE_INPUT_AMOUNT');
         IWBNB(WBNB).deposit{value: amounts[0]}();
@@ -357,7 +368,8 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         address[] calldata path,
         address to,
         uint deadline
-    ) external virtual override ensure(deadline) antiWhale(path, amountIn) {
+    ) external virtual override ensure(deadline) {
+        antiWhale(path, amountIn);
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, CrosswiseLibrary.pairFor(factory, path[0], path[1]), amountIn
         );
@@ -379,9 +391,9 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         override
         payable
         ensure(deadline)
-        antiWhale(path, amountIn)
     {
         require(path[0] == WBNB, 'CrosswiseRouter: INVALID_PATH');
+        antiWhale(path, msg.value);
         uint amountIn = msg.value;
         IWBNB(WBNB).deposit{value: amountIn}();
         assert(IWBNB(WBNB).transfer(CrosswiseLibrary.pairFor(factory, path[0], path[1]), amountIn));
@@ -403,9 +415,9 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         virtual
         override
         ensure(deadline)
-        antiWhale(path, amountIn)
     {
         require(path[path.length - 1] == WBNB, 'CrosswiseRouter: INVALID_PATH');
+        antiWhale(path, amountIn);
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, CrosswiseLibrary.pairFor(factory, path[0], path[1]), amountIn
         );
@@ -416,6 +428,12 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         TransferHelper.safeTransferETH(to, amountOut);
     }
 
+
+    function setAntiWhale(address lp, bool status) external {
+        require(lpCreators[lp] == msg.sender, "CrosswiseRouter.setAntiWhale: invalid sender");
+        antiWhalePerLp[lp] = status;
+        emit SetAntiWhale(lp, status);
+    }
     // **** LIBRARY FUNCTIONS ****
     function quote(uint amountA, uint reserveA, uint reserveB) public pure virtual override returns (uint amountB) {
         return CrosswiseLibrary.quote(amountA, reserveA, reserveB);
