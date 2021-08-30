@@ -13,21 +13,31 @@ import './interfaces/IWBNB.sol';
 contract CrosswiseRouter is ICrosswiseRouter02 {
     using SafeMath for uint;
 
+    event SetAntiWhale(address indexed lp, bool status);
+
     address public immutable override factory;
     address public immutable override WBNB;
 
     uint public maxTransferAmountRate = 50;
     uint public maxShare = 10000;
+
+    mapping(address => bool) private antiWhalePerLp;
+    mapping(address => address) public lpCreators;
+
     modifier ensure(uint deadline) {
         require(deadline >= block.timestamp, 'CrosswiseRouter: EXPIRED');
         _;
     }
 
     function antiWhale(address[] memory path, uint amountIn) internal {
+        
         ICrosswisePair pair = ICrosswisePair(CrosswiseLibrary.pairFor(factory, path[0], path[1]));
-        (uint reserve0, uint reserve1,) = pair.getReserves();
-        uint maxTransferAmount = (reserve0 * maxTransferAmountRate) / maxShare;
-        require(amountIn <= maxTransferAmount, "CrssRouter.antiWhale: Transfer amount exceeds the maxTransferAmount");
+
+        if (antiWhalePerLp[address(pair)]) {
+            (uint reserve0, uint reserve1,) = pair.getReserves();
+            uint maxTransferAmount = (reserve0 * maxTransferAmountRate) / maxShare;
+            require(amountIn <= maxTransferAmount, "CrssRouter.antiWhale: Transfer amount exceeds the maxTransferAmount");
+        }
     }
     constructor(address _factory, address _WBNB) public {
         factory = _factory;
@@ -39,7 +49,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     }
 
     // **** ADD LIQUIDITY ****
-    function _addLiquidity(
+    function _addLiquidity( 
         address tokenA,
         address tokenB,
         uint amountADesired,
@@ -53,6 +63,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         }
         (uint reserveA, uint reserveB) = CrosswiseLibrary.getReserves(factory, tokenA, tokenB);
         if (reserveA == 0 && reserveB == 0) {
+            lpCreators[ICrosswiseFactory(factory).getPair(tokenA, tokenB)] = msg.sender;
             (amountA, amountB) = (amountADesired, amountBDesired);
         } else {
             uint amountBOptimal = CrosswiseLibrary.quote(amountADesired, reserveA, reserveB);
@@ -417,6 +428,12 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         TransferHelper.safeTransferETH(to, amountOut);
     }
 
+
+    function setAntiWhale(address lp, bool status) external {
+        require(lpCreators[lp] == msg.sender, "CrosswiseRouter.setAntiWhale: invalid sender");
+        antiWhalePerLp[lp] = status;
+        emit SetAntiWhale(lp, status);
+    }
     // **** LIBRARY FUNCTIONS ****
     function quote(uint amountA, uint reserveA, uint reserveB) public pure virtual override returns (uint amountB) {
         return CrosswiseLibrary.quote(amountA, reserveA, reserveB);
