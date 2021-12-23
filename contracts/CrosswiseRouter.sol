@@ -26,7 +26,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     mapping(address => bool) private antiWhalePerLp;
     mapping(address => address) public lpCreators;
 
-    uint256 public maxSpreadTolerance = 100; // maximum spread 10%
+    uint256 public maxSpreadTolerance = 1000; // maximum spread 10%
     IPriceConsumer public priceConsumer;
     // <LP pair => paused>
     mapping (address => bool) public priceGuardPaused;
@@ -61,7 +61,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     ) public {
         factory = _factory;
         WBNB = _WBNB;
-        priceGuardPaused = _priceConsumer;
+        priceConsumer = _priceConsumer;
     }
 
     receive() external payable {
@@ -580,7 +580,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
                     oraclePrice :
                     pairPrice;
                 uint256 upperLimit =
-                    minPrice.mul(maxSpreadTolerance.add(100)) / 100;
+                    minPrice.mul(maxSpreadTolerance.add(10000)) / 10000;
                 require(
                     maxPrice <= upperLimit,
                     'CrosswiseRouter.verifyPrice: verify price is failed'
