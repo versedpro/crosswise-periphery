@@ -54,9 +54,14 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         }
     }
 
-    constructor(address _factory, address _WBNB) public {
+    constructor(
+        address _factory,
+        address _WBNB,
+        IPriceConsumer _priceConsumer
+    ) public {
         factory = _factory;
         WBNB = _WBNB;
+        priceGuardPaused = _priceConsumer;
     }
 
     receive() external payable {
