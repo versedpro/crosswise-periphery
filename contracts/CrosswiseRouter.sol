@@ -36,7 +36,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         _;
     }
 
-    function antiWhale(address[] memory path, uint amountIn) internal {
+    function antiWhale(address[] memory path, uint amountIn) internal view {
         for (uint256 i = 0; i < path.length - 1; i++) {
             ICrosswisePair pair = ICrosswisePair(
                 CrosswiseLibrary.pairFor(factory, path[i], path[i + 1])
@@ -548,7 +548,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         address[] memory _path,
         uint256 _amountIn,
         uint256 _amountOut
-    ) internal {
+    ) internal view {
         for (uint256 i = 0; i < _path.length - 1; i++) {
             ICrosswisePair pair =
                 ICrosswisePair(
