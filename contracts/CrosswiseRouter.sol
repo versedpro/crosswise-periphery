@@ -37,12 +37,20 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     }
 
     function antiWhale(address[] memory path, uint amountIn) internal {
-        ICrosswisePair pair = ICrosswisePair(CrosswiseLibrary.pairFor(factory, path[0], path[1]));
+        for (uint256 i = 0; i < path.length - 1; i++) {
+            ICrosswisePair pair = ICrosswisePair(
+                CrosswiseLibrary.pairFor(factory, path[i], path[i + 1])
+            );
 
-        if (antiWhalePerLp[address(pair)]) {
-            (uint reserve0, uint reserve1,) = pair.getReserves();
-            uint maxTransferAmount = (reserve0 * maxTransferAmountRate) / maxShare;
-            require(amountIn <= maxTransferAmount, "CrssRouter.antiWhale: Transfer amount exceeds the maxTransferAmount");
+            if (antiWhalePerLp[address(pair)]) {
+                (uint reserve0, uint reserve1,) = pair.getReserves();
+                (reserve0, reserve1) =
+                    path[i] == pair.token0() ?
+                    (reserve0, reserve1) :
+                    (reserve1, reserve0);
+                uint maxTransferAmount = (reserve0 * maxTransferAmountRate) / maxShare;
+                require(amountIn <= maxTransferAmount, "CrssRouter.antiWhale: Transfer amount exceeds the maxTransferAmount");
+            }
         }
     }
 
@@ -256,7 +264,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         uint deadline
     ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
         antiWhale(path, amountIn);
-        verifyPrice(path, amountIn);
+        verifyPrice(path, amountIn, 0);
         amounts = CrosswiseLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'CrosswiseRouter: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -272,7 +280,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         uint deadline
     ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
         antiWhale(path, amountOut);
-        verifyPrice(path, amountOut);
+        verifyPrice(path, 0, amountOut);
         amounts = CrosswiseLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, 'CrosswiseRouter: EXCESSIVE_INPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -290,7 +298,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     {
         require(path[0] == WBNB, 'CrosswiseRouter: INVALID_PATH');
         antiWhale(path, msg.value);
-        verifyPrice(path, msg.value);
+        verifyPrice(path, msg.value, 0);
         amounts = CrosswiseLibrary.getAmountsOut(factory, msg.value, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'CrosswiseRouter: INSUFFICIENT_OUTPUT_AMOUNT');
         IWBNB(WBNB).deposit{value: amounts[0]}();
@@ -306,7 +314,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     {
         require(path[path.length - 1] == WBNB, 'CrosswiseRouter: INVALID_PATH');
         antiWhale(path, amountOut);
-        verifyPrice(path, amountOut);
+        verifyPrice(path, 0, amountOut);
         amounts = CrosswiseLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, 'CrosswiseRouter: EXCESSIVE_INPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -325,7 +333,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     {
         require(path[path.length - 1] == WBNB, 'CrosswiseRouter: INVALID_PATH');
         antiWhale(path, amountIn);
-        verifyPrice(path, amountIn);
+        verifyPrice(path, amountIn, 0);
         amounts = CrosswiseLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'CrosswiseRouter: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -345,7 +353,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     {
         require(path[0] == WBNB, 'CrosswiseRouter: INVALID_PATH');
         antiWhale(path, msg.value);
-        verifyPrice(path, msg.value);
+        verifyPrice(path, 0, amountOut);
         amounts = CrosswiseLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= msg.value, 'CrosswiseRouter: EXCESSIVE_INPUT_AMOUNT');
         IWBNB(WBNB).deposit{value: amounts[0]}();
@@ -383,7 +391,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         uint deadline
     ) external virtual override ensure(deadline) {
         antiWhale(path, amountIn);
-        verifyPrice(path, amountIn);
+        verifyPrice(path, amountIn, 0);
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, CrosswiseLibrary.pairFor(factory, path[0], path[1]), amountIn
         );
@@ -408,7 +416,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     {
         require(path[0] == WBNB, 'CrosswiseRouter: INVALID_PATH');
         antiWhale(path, msg.value);
-        verifyPrice(path, msg.value);
+        verifyPrice(path, msg.value, 0);
         uint amountIn = msg.value;
         IWBNB(WBNB).deposit{value: amountIn}();
         assert(IWBNB(WBNB).transfer(CrosswiseLibrary.pairFor(factory, path[0], path[1]), amountIn));
@@ -433,7 +441,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     {
         require(path[path.length - 1] == WBNB, 'CrosswiseRouter: INVALID_PATH');
         antiWhale(path, amountIn);
-        verifyPrice(path, amountIn);
+        verifyPrice(path, amountIn, 0);
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, CrosswiseLibrary.pairFor(factory, path[0], path[1]), amountIn
         );
@@ -499,40 +507,80 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     function pausePriceGuard(address _lp, bool _paused) external {
         require(
             lpCreators[_lp] == msg.sender,
-            "CrosswiseRouter.pausePriceGuard: invalid sender"
+            'CrosswiseRouter.pausePriceGuard: invalid sender'
         );
         priceGuardPaused[_lp] = _paused;
         emit PausePriceGuard(_lp, _paused);
     }
 
-    function getPairPrice(address[] memory _path, uint _amountIn)
-        internal view returns (uint256)
-    {
-        // todo
-        return 0;
+    function getPairPrice(
+        address _token0,
+        address _token1,
+        uint256 _amountIn,
+        uint256 _amountOut
+    ) internal view returns (uint256) {
+        (address token0,) = CrosswiseLibrary.sortTokens(_token0, _token1);
+        (uint256 reserve0, uint256 reserve1) =
+            CrosswiseLibrary.getReserves(factory, _token0, _token1);
+        (reserve0, reserve1) =
+            token0 == _token0 ?
+            (reserve0, reserve1) :
+            (reserve1, reserve0);
+        (uint256 amountIn, uint256 amountOut) = _amountIn == 0 ?
+            (CrosswiseLibrary.getAmountIn(
+                _amountOut,
+                reserve0,
+                reserve1
+            ), _amountOut) :
+            (_amountIn, CrosswiseLibrary.getAmountOut(
+                _amountIn,
+                reserve0,
+                reserve1
+            ));
+
+        (uint256 decimals0, uint256 decimals1) =
+            (IBEP20(_token0).decimals(), IBEP20(_token1).decimals());
+        return (amountIn.mul(10 ** decimals1)).mul(10 ** 8) /
+            (amountOut * (10 ** decimals0));
     }
 
-    function verifyPrice(address[] memory _path, uint _amountIn) internal {
-        ICrosswisePair pair =
-            ICrosswisePair(
-                CrosswiseLibrary.pairFor(factory, _path[0], _path[1])
-            );
+    function verifyPrice(
+        address[] memory _path,
+        uint256 _amountIn,
+        uint256 _amountOut
+    ) internal {
+        for (uint256 i = 0; i < _path.length - 1; i++) {
+            ICrosswisePair pair =
+                ICrosswisePair(
+                    CrosswiseLibrary.pairFor(factory, _path[i], _path[i + 1])
+                );
 
-        if (!priceGuardPaused[address(pair)]) {
-            uint256 pairPrice = getPairPrice(_path, _amountIn);
-            uint256 oraclePrice =
-                priceConsumer.getLatestPrice(address(pair));
-            uint256 minPrice =
-                pairPrice < oraclePrice ?
-                pairPrice :
-                oraclePrice;
-            uint256 maxPrice =
-                pairPrice < oraclePrice ?
-                oraclePrice :
-                pairPrice;
-            uint256 upperLimit =
-                minPrice.mul(maxSpreadTolerance.add(100)) / 100;
-            require(maxPrice <= upperLimit, "verify price is failed");
+            if (!priceGuardPaused[address(pair)]) {
+                uint256 pairPrice =
+                    getPairPrice(
+                        _path[i],
+                        _path[i + 1],
+                        _amountIn,
+                        _amountOut
+                    );
+                uint256 oraclePrice = priceConsumer.getLatestPrice(
+                    address(pair)
+                );
+                uint256 minPrice =
+                    pairPrice < oraclePrice ?
+                    pairPrice :
+                    oraclePrice;
+                uint256 maxPrice =
+                    pairPrice < oraclePrice ?
+                    oraclePrice :
+                    pairPrice;
+                uint256 upperLimit =
+                    minPrice.mul(maxSpreadTolerance.add(100)) / 100;
+                require(
+                    maxPrice <= upperLimit,
+                    'CrosswiseRouter.verifyPrice: verify price is failed'
+                );
+            }
         }
     }
 }
