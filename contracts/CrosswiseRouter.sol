@@ -26,10 +26,11 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     mapping(address => bool) private antiWhalePerLp;
     mapping(address => address) public lpCreators;
 
-    uint256 public maxSpreadTolerance = 1000; // maximum spread 10%
     IPriceConsumer public priceConsumer;
     // <LP pair => paused>
     mapping (address => bool) public priceGuardPaused;
+    // <LP pair => tolerance> 100% in 10000
+    mapping (address => uint256) public maxSpreadTolerance;
 
     modifier ensure(uint deadline) {
         require(deadline >= block.timestamp, 'CrosswiseRouter: EXPIRED');
@@ -518,6 +519,14 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         emit PausePriceGuard(_lp, _paused);
     }
 
+    function setMaxSpreadTolerance(address _lp, uint256 _tolerance) external {
+        require(
+            lpCreators[_lp] == msg.sender,
+            'CrosswiseRouter.setMaxSpreadTolerance: invalid sender'
+        );
+        maxSpreadTolerance[_lp] = _tolerance;
+    }
+
     function getPairPrice(
         address _token0,
         address _token1,
@@ -561,6 +570,10 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
                 );
 
             if (!priceGuardPaused[address(pair)]) {
+                require(
+                    maxSpreadTolerance[address(pair)] > 0,
+                    "max spread tolerance not initialized"
+                );
                 uint256 pairPrice =
                     getPairPrice(
                         _path[i],
@@ -580,7 +593,9 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
                     oraclePrice :
                     pairPrice;
                 uint256 upperLimit =
-                    minPrice.mul(maxSpreadTolerance.add(10000)) / 10000;
+                    minPrice.mul(maxSpreadTolerance[
+                        address(pair)
+                    ].add(10000)) / 10000;
                 require(
                     maxPrice <= upperLimit,
                     'CrosswiseRouter.verifyPrice: verify price is failed'
