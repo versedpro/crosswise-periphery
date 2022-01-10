@@ -15,16 +15,21 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     using SafeMath for uint;
 
     event SetAntiWhale(address indexed lp, bool status);
+    event SetwhitelistToken(address indexed token, bool status);
     event PausePriceGuard(address _lp, bool _paused);
 
     address public immutable override factory;
     address public immutable override WBNB;
+
+    // user who can set the whitelist token
+    address public immutable admin;
 
     uint public maxTransferAmountRate = 50;
     uint public maxShare = 10000;
 
     mapping(address => bool) private antiWhalePerLp;
     mapping(address => address) public lpCreators;
+    mapping(address => bool) public whitelistTokens;
 
     IPriceConsumer public priceConsumer;
     // <LP pair => paused>
@@ -58,11 +63,13 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
     constructor(
         address _factory,
         address _WBNB,
-        IPriceConsumer _priceConsumer
+        IPriceConsumer _priceConsumer,
+        address _admin
     ) public {
         factory = _factory;
         WBNB = _WBNB;
         priceConsumer = _priceConsumer;
+        admin = _admin;
     }
 
     receive() external payable {
@@ -109,6 +116,8 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         address to,
         uint deadline
     ) external virtual override ensure(deadline) returns (uint amountA, uint amountB, uint liquidity) {
+        require(whitelistTokens[tokenA] && whitelistTokens[tokenB], "not whitelisted tokens");
+
         (amountA, amountB) = _addLiquidity(tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin);
         address pair = CrosswiseLibrary.pairFor(factory, tokenA, tokenB);
         TransferHelper.safeTransferFrom(tokenA, msg.sender, pair, amountA);
@@ -123,6 +132,7 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         address to,
         uint deadline
     ) external virtual override payable ensure(deadline) returns (uint amountToken, uint amountETH, uint liquidity) {
+        require(whitelistTokens[token], "not whitelisted tokens");
         (amountToken, amountETH) = _addLiquidity(
             token,
             WBNB,
@@ -463,6 +473,12 @@ contract CrosswiseRouter is ICrosswiseRouter02 {
         require(lpCreators[lp] == msg.sender, "CrosswiseRouter.setAntiWhale: invalid sender");
         antiWhalePerLp[lp] = status;
         emit SetAntiWhale(lp, status);
+    }
+
+    function setwhitelistToken(address token, bool status) external {
+        require(msg.sender == admin, "CrosswiseRouter.setwhitelistToken: invalid sender");
+        whitelistTokens[token] = status;
+        emit SetwhitelistToken(token, status);
     }
     // **** LIBRARY FUNCTIONS ****
     function quote(uint amountA, uint reserveA, uint reserveB) public pure virtual override returns (uint amountB) {
